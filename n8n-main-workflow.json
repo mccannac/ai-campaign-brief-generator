@@ -1,0 +1,1049 @@
+{
+  "name": "AI Campaign Brief Generator \u2014 Main",
+  "nodes": [
+    {
+      "id": "form_trigger",
+      "name": "Campaign Request Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -400,
+        0
+      ],
+      "webhookId": "REPLACE_ON_IMPORT",
+      "parameters": {
+        "formTitle": "AI Campaign Brief Generator \u2014 Request a Brief",
+        "formDescription": "Submit campaign inputs to generate a draft strategic brief for review.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Campaign_Name",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Campaign_Type",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Lead Gen"
+                  },
+                  {
+                    "option": "Brand Awareness"
+                  },
+                  {
+                    "option": "Product Launch"
+                  },
+                  {
+                    "option": "Retention/Upsell"
+                  },
+                  {
+                    "option": "Event Promotion"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Business_Objective",
+              "fieldType": "textarea",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Desired_Outcome",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Offer",
+              "fieldType": "textarea",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Budget",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Timeline_Start",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Timeline_End",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Geography",
+              "fieldType": "text",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "Channels",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "comma-separated: LinkedIn, Google Search, Meta, Email, Display, Events"
+            },
+            {
+              "fieldLabel": "Audience_Persona",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "must match an existing Persona Name in Airtable"
+            },
+            {
+              "fieldLabel": "Constraints",
+              "fieldType": "textarea",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "Requester_Name",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Requester_Email",
+              "fieldType": "email",
+              "requiredField": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "validate_inputs",
+      "name": "Validate Inputs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const item = $input.first().json;\nconst errors = [];\n\nconst required = ['Campaign_Name','Campaign_Type','Business_Objective','Desired_Outcome',\n  'Offer','Budget','Timeline_Start','Timeline_End','Channels','Audience_Persona',\n  'Requester_Name','Requester_Email'];\n\nfor (const field of required) {\n  const val = item[field];\n  if (val === undefined || val === null || val === '') {\n    errors.push(`Missing required field: ${field}`);\n  }\n}\n\nif (item.Budget !== undefined && (isNaN(Number(item.Budget)) || Number(item.Budget) <= 0)) {\n  errors.push('Budget must be a positive number');\n}\n\nif (item.Timeline_Start && item.Timeline_End) {\n  const start = new Date(item.Timeline_Start);\n  const end = new Date(item.Timeline_End);\n  if (end <= start) errors.push('Timeline_End must be after Timeline_Start');\n}\n\nconst channelsArr = (item.Channels || '').split(',').map(s => s.trim()).filter(Boolean);\nif (channelsArr.length === 0) errors.push('At least one channel must be provided');\n\nreturn [{\n  json: { ...item, Channels_Array: channelsArr, valid: errors.length === 0, validation_errors: errors }\n}];"
+      }
+    },
+    {
+      "id": "is_valid",
+      "name": "Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        120,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{$json.valid}}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "validation_failed",
+      "name": "Validation Failed",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        120,
+        220
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "status",
+              "type": "string",
+              "value": "validation_failed"
+            },
+            {
+              "id": "a2",
+              "name": "errors",
+              "type": "string",
+              "value": "={{$json.validation_errors.join(', ')}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "create_campaign",
+      "name": "Create Campaign Record",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        380,
+        0
+      ],
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BASE_ID",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "Campaigns",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Campaign Name": "={{$json.Campaign_Name}}",
+            "Campaign Type": "={{$json.Campaign_Type}}",
+            "Business Objective": "={{$json.Business_Objective}}",
+            "Desired Outcome": "={{$json.Desired_Outcome}}",
+            "Offer": "={{$json.Offer}}",
+            "Budget": "={{$json.Budget}}",
+            "Timeline Start": "={{$json.Timeline_Start}}",
+            "Timeline End": "={{$json.Timeline_End}}",
+            "Geography": "={{$json.Geography}}",
+            "Channels": "={{$json.Channels_Array}}",
+            "Constraints": "={{$json.Constraints}}",
+            "Requester Name": "={{$json.Requester_Name}}",
+            "Requester Email": "={{$json.Requester_Email}}",
+            "Status": "Processing"
+          }
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "id": "fetch_persona",
+      "name": "Fetch Persona",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        640,
+        0
+      ],
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BASE_ID",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "Personas",
+          "mode": "name"
+        },
+        "filterByFormula": "={{'{Persona Name} = \"' + $('Validate Inputs').first().json.Audience_Persona + '\"'}}"
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "id": "fetch_product",
+      "name": "Fetch Product Context",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        900,
+        0
+      ],
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BASE_ID",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "Products",
+          "mode": "name"
+        },
+        "filterByFormula": "={{'SEARCH(\"' + $('Validate Inputs').first().json.Campaign_Name + '\", {Related Campaigns})'}}"
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "id": "fetch_facts",
+      "name": "Fetch Historical Facts",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1160,
+        0
+      ],
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BASE_ID",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "HistoricalFacts",
+          "mode": "name"
+        },
+        "filterByFormula": "={{'{Related Campaign} = \"' + $('Validate Inputs').first().json.Campaign_Name + '\"'}}"
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "id": "fetch_live_data",
+      "name": "Fetch Live Ad Platform Data (Placeholder)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1420,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://REPLACE-with-your-Google-Ads-or-GA4-or-CRM-endpoint",
+        "options": {}
+      },
+      "notesInFlow": true,
+      "notes": "PLACEHOLDER: duplicate this node once per real data source (Google Ads, GA4, CRM) and wire each into Normalize & Combine Data. Each needs its own OAuth2/API credential."
+    },
+    {
+      "id": "normalize_data",
+      "name": "Normalize & Combine Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const campaign = $('Validate Inputs').first().json;\nconst personaItems = $('Fetch Persona').all();\nconst productItems = $('Fetch Product Context').all();\nconst factItems = $('Fetch Historical Facts').all();\nlet liveData = {};\ntry { liveData = $('Fetch Live Ad Platform Data (Placeholder)').first().json; } catch (e) { liveData = {}; }\n\nconst persona = personaItems.length > 0 ? personaItems[0].json.fields : null;\nconst product = productItems.length > 0 ? productItems[0].json.fields : null;\n\nconst historical_facts = factItems.length > 0\n  ? factItems.map(i => ({\n      metric: i.json.fields?.['Metric'],\n      value: i.json.fields?.['Value'],\n      source: i.json.fields?.['Source'],\n      segment: i.json.fields?.['Segment/Channel'],\n      date_range: i.json.fields?.['Date Range'],\n      freshness: i.json.fields?.['Data Freshness Flag'] || 'unknown'\n    }))\n  : [];\n\nconst data_gaps = [];\nif (!persona) data_gaps.push('No matching Persona record found for Audience_Persona: ' + campaign.Audience_Persona);\nif (!product) data_gaps.push('No matching Product record found for this campaign');\nif (historical_facts.length === 0) data_gaps.push('No historical performance facts on file for this product/persona combination');\nif (!liveData || Object.keys(liveData).length === 0) data_gaps.push('Live data pull not configured (placeholder node)');\n\nconst normalized_data = {\n  campaign: {\n    name: campaign.Campaign_Name,\n    type: campaign.Campaign_Type,\n    objective: campaign.Business_Objective,\n    desired_outcome: campaign.Desired_Outcome,\n    offer: campaign.Offer,\n    budget: Number(campaign.Budget),\n    timeline: { start: campaign.Timeline_Start, end: campaign.Timeline_End },\n    geography: campaign.Geography || 'Not specified',\n    channels: campaign.Channels_Array,\n    constraints: campaign.Constraints || 'None specified'\n  },\n  persona: persona || { note: 'data gap - see data_gaps' },\n  product: product || { note: 'data gap - see data_gaps' },\n  historical_facts,\n  live_data_pull: liveData,\n  data_gaps\n};\n\nreturn [{ json: {\n  normalized_data,\n  airtable_record_id: $('Create Campaign Record').first().json.id\n} }];"
+      }
+    },
+    {
+      "id": "ai_facts",
+      "name": "AI: Extract Facts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1940,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  model: 'claude-sonnet-5',\n  max_tokens: 2000,\n  system: \"You are a data-extraction component in an automated marketing workflow. Restate what the provided normalized performance data literally shows. Do not infer causes, recommend actions, or fill in missing data. If a data point is marked stale or missing, state that explicitly as a data gap. Every fact must be traceable to a specific field in the input data. Output ONLY valid JSON, no preamble, no markdown fences: {\\\"facts\\\":[{\\\"id\\\":\\\"f1\\\",\\\"statement\\\":\\\"...\\\",\\\"source_field\\\":\\\"...\\\",\\\"data_freshness\\\":\\\"fresh|stale|missing\\\"}],\\\"data_gaps\\\":[\\\"...\\\"]}\",\n  messages: [ { role: 'user', content: JSON.stringify($json.normalized_data) } ]\n} }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "retry": {
+            "maxTries": 2,
+            "waitBetweenTries": 2000
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Anthropic API Key (x-api-key header)"
+        }
+      }
+    },
+    {
+      "id": "parse_facts",
+      "name": "Parse Facts Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const raw = $json.content?.[0]?.text || $json.text || '';\nlet parsed;\ntry { parsed = JSON.parse(raw); } catch (e) {\n  throw new Error('AI: Extract Facts did not return valid JSON: ' + raw.slice(0,300));\n}\nreturn [{ json: {\n  facts: parsed.facts || [],\n  data_gaps: parsed.data_gaps || [],\n  normalized_data: $('Normalize & Combine Data').first().json.normalized_data,\n  airtable_record_id: $('Normalize & Combine Data').first().json.airtable_record_id\n} }];"
+      }
+    },
+    {
+      "id": "ai_insights",
+      "name": "AI: Insights & Hypotheses",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2460,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  model: 'claude-sonnet-5',\n  max_tokens: 2000,\n  system: \"You are a marketing analysis component. Given facts and campaign context, produce insights (hedged inferences, never certain) and hypotheses (untested ideas, never recommendations). Every insight/hypothesis must list which fact id(s) it draws from, or note it draws on general reasoning with no data support. Output ONLY valid JSON: {\\\"insights\\\":[{\\\"id\\\":\\\"i1\\\",\\\"statement\\\":\\\"...\\\",\\\"based_on_facts\\\":[\\\"f1\\\"],\\\"confidence\\\":\\\"low|medium|high\\\"}],\\\"hypotheses\\\":[{\\\"id\\\":\\\"h1\\\",\\\"statement\\\":\\\"...\\\",\\\"based_on_facts\\\":[\\\"f1\\\"],\\\"testable_via\\\":\\\"...\\\"}]}\",\n  messages: [ { role: 'user', content: JSON.stringify({ facts: $json.facts, data_gaps: $json.data_gaps, campaign: $json.normalized_data.campaign }) } ]\n} }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "retry": {
+            "maxTries": 2,
+            "waitBetweenTries": 2000
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Anthropic API Key (x-api-key header)"
+        }
+      }
+    },
+    {
+      "id": "parse_insights",
+      "name": "Parse Insights Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2720,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const raw = $json.content?.[0]?.text || $json.text || '';\nlet parsed;\ntry { parsed = JSON.parse(raw); } catch (e) {\n  throw new Error('AI: Insights & Hypotheses did not return valid JSON: ' + raw.slice(0,300));\n}\nreturn [{ json: {\n  ...$('Parse Facts Output').first().json,\n  insights: parsed.insights || [],\n  hypotheses: parsed.hypotheses || []\n} }];"
+      }
+    },
+    {
+      "id": "ai_recommendations",
+      "name": "AI: Recommendations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2980,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  model: 'claude-sonnet-5',\n  max_tokens: 2000,\n  system: \"You are a strategic recommendation component. Given facts, insights, hypotheses, and the campaign objective, propose specific recommendations. Every recommendation must cite which id(s) it is based on. Do not recommend a total budget figure, only allocation splits within the provided budget. Avoid absolute/guaranteed-outcome language. Output ONLY valid JSON: {\\\"recommendations\\\":[{\\\"id\\\":\\\"r1\\\",\\\"category\\\":\\\"messaging|channel|kpi|testing|creative|funnel\\\",\\\"statement\\\":\\\"...\\\",\\\"based_on\\\":[\\\"f1\\\",\\\"i1\\\"],\\\"priority\\\":\\\"high|medium|low\\\"}]}\",\n  messages: [ { role: 'user', content: JSON.stringify({ facts: $json.facts, insights: $json.insights, hypotheses: $json.hypotheses, campaign: $json.normalized_data.campaign }) } ]\n} }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "retry": {
+            "maxTries": 2,
+            "waitBetweenTries": 2000
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Anthropic API Key (x-api-key header)"
+        }
+      }
+    },
+    {
+      "id": "parse_reco",
+      "name": "Parse Recommendations Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3240,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const raw = $json.content?.[0]?.text || $json.text || '';\nlet parsed;\ntry { parsed = JSON.parse(raw); } catch (e) {\n  throw new Error('AI: Recommendations did not return valid JSON: ' + raw.slice(0,300));\n}\nreturn [{ json: {\n  ...$('Parse Insights Output').first().json,\n  recommendations: parsed.recommendations || []\n} }];"
+      }
+    },
+    {
+      "id": "ai_assemble",
+      "name": "AI: Assemble Brief",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3500,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  model: 'claude-sonnet-5',\n  max_tokens: 4000,\n  system: \"You are a document-assembly component. Given campaign inputs and previously generated facts, insights, hypotheses, and recommendations, assemble a complete campaign brief. Do not introduce new claims beyond what was provided. Every synthesized sentence must tag its source id(s) inline like [f1][r2]. If a section has no supporting content, write 'Not enough data to generate this section'. Output ONLY valid JSON: {\\\"executive_summary\\\":\\\"\\\",\\\"business_objective\\\":\\\"\\\",\\\"marketing_objective\\\":\\\"\\\",\\\"target_audience\\\":\\\"\\\",\\\"customer_problem\\\":\\\"\\\",\\\"offer_and_value_proposition\\\":\\\"\\\",\\\"historical_insights\\\":[],\\\"strategic_hypotheses\\\":[],\\\"campaign_strategy_and_messaging_pillars\\\":[],\\\"creative_angles\\\":[],\\\"channel_strategy\\\":[],\\\"funnel_customer_journey\\\":\\\"\\\",\\\"recommended_kpis_and_measurement_plan\\\":[],\\\"testing_plan\\\":[],\\\"budget_considerations\\\":\\\"\\\",\\\"risks_and_constraints\\\":[],\\\"open_questions\\\":[],\\\"required_human_decisions\\\":[]}\",\n  messages: [ { role: 'user', content: JSON.stringify($json) } ]\n} }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "retry": {
+            "maxTries": 2,
+            "waitBetweenTries": 2000
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Anthropic API Key (x-api-key header)"
+        }
+      }
+    },
+    {
+      "id": "parse_brief",
+      "name": "Parse Brief Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3760,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const raw = $json.content?.[0]?.text || $json.text || '';\nlet brief;\ntry { brief = JSON.parse(raw); } catch (e) {\n  throw new Error('AI: Assemble Brief did not return valid JSON: ' + raw.slice(0,300));\n}\nreturn [{ json: {\n  brief,\n  facts: $('Parse Recommendations Output').first().json.facts,\n  insights: $('Parse Recommendations Output').first().json.insights,\n  hypotheses: $('Parse Recommendations Output').first().json.hypotheses,\n  recommendations: $('Parse Recommendations Output').first().json.recommendations,\n  airtable_record_id: $('Parse Recommendations Output').first().json.airtable_record_id,\n  campaign_inputs: $('Validate Inputs').first().json\n} }];"
+      }
+    },
+    {
+      "id": "automated_qa",
+      "name": "Automated QA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4020,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const { brief, facts, insights, hypotheses, recommendations, campaign_inputs } = $json;\nconst flags = [];\n\nconst requiredSections = ['executive_summary','business_objective','marketing_objective','target_audience',\n  'customer_problem','offer_and_value_proposition','historical_insights','strategic_hypotheses',\n  'campaign_strategy_and_messaging_pillars','creative_angles','channel_strategy','funnel_customer_journey',\n  'recommended_kpis_and_measurement_plan','testing_plan','budget_considerations','risks_and_constraints',\n  'open_questions','required_human_decisions'];\nfor (const s of requiredSections) {\n  if (!brief[s] || brief[s].length === 0) flags.push('Missing or empty section: ' + s);\n}\n\nconst validIds = new Set([\n  ...facts.map(f => f.id), ...insights.map(i => i.id),\n  ...hypotheses.map(h => h.id), ...recommendations.map(r => r.id)\n]);\nconst allText = JSON.stringify(brief);\nconst cited = [...allText.matchAll(/\\[([a-z]\\d+)\\]/g)].map(m => m[1]);\nfor (const id of cited) {\n  if (!validIds.has(id)) flags.push('Brief cites unknown source id: ' + id);\n}\n\nconst certaintyWords = ['will generate', 'guaranteed', 'proven', 'definitely'];\nfor (const h of (brief.strategic_hypotheses || [])) {\n  if (certaintyWords.some(w => h.toLowerCase().includes(w))) {\n    flags.push('Hypothesis stated with unwarranted certainty: ' + h.slice(0,60));\n  }\n}\n\nif (new Date(campaign_inputs.Timeline_End) <= new Date(campaign_inputs.Timeline_Start)) {\n  flags.push('Timeline_End is not after Timeline_Start');\n}\n\nconst piiPattern = /[\\w.+-]+@[\\w-]+\\.[a-z]{2,}|\\b\\d{3}[-.]?\\d{3}[-.]?\\d{4}\\b/i;\nif (piiPattern.test(allText)) flags.push('Possible PII detected in brief text');\n\nreturn [{ json: { ...$json, qa_passed: flags.length === 0, qa_flags: flags } }];"
+      }
+    },
+    {
+      "id": "qa_passed_if",
+      "name": "QA Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4280,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{$json.qa_passed}}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "store_draft",
+      "name": "Store Draft Brief",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        4540,
+        -140
+      ],
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BASE_ID",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "Campaigns",
+          "mode": "name"
+        },
+        "id": "={{$json.airtable_record_id}}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Awaiting Review",
+            "Draft Brief (JSON)": "={{JSON.stringify($json.brief)}}",
+            "QA Flags": "={{$json.qa_flags.join('; ')}}"
+          }
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "id": "notify_reviewer",
+      "name": "Notify Reviewer",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        4800,
+        -140
+      ],
+      "parameters": {
+        "select": "channel",
+        "channel": {
+          "__rl": true,
+          "value": "REPLACE_WITH_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "=New campaign brief ready for review: *{{$('Validate Inputs').first().json.Campaign_Name}}*\\nRecord: {{$json.airtable_record_id}}\\nReview in Airtable and set Status to Approved / Rejected / Revision Requested."
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "id": "flag_qa_fail",
+      "name": "Flag for Manual Regeneration",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        4540,
+        140
+      ],
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BASE_ID",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "Campaigns",
+          "mode": "name"
+        },
+        "id": "={{$json.airtable_record_id}}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "QA Flagged",
+            "Draft Brief (JSON)": "={{JSON.stringify($json.brief)}}",
+            "QA Flags": "={{$json.qa_flags.join('; ')}}"
+          }
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "id": "notify_qa_fail",
+      "name": "Notify QA Failure",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        4800,
+        140
+      ],
+      "parameters": {
+        "select": "channel",
+        "channel": {
+          "__rl": true,
+          "value": "REPLACE_WITH_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "=QA check failed for campaign *{{$('Validate Inputs').first().json.Campaign_Name}}*. Flags: {{$json.qa_flags.join('; ')}}\\nManual review needed before this brief can go to the requester's reviewer."
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "id": "note1",
+      "name": "Note-note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -440,
+        -380
+      ],
+      "parameters": {
+        "content": "SETUP NEEDED:\\n- Airtable base + credential\\n- Anthropic API key (header auth: x-api-key)\\n- Slack credential + channel ID\\n- Replace the placeholder HTTP node with real Google Ads / GA4 / CRM calls",
+        "height": 200,
+        "width": 320
+      }
+    },
+    {
+      "id": "note2",
+      "name": "Note-note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1900,
+        -380
+      ],
+      "parameters": {
+        "content": "Prompts embedded in the AI nodes are copies of prompt-templates-and-schemas.md.\\nKeep both in sync \u2014 that file is the source of truth (store it in the same GitHub repo as this JSON).",
+        "height": 200,
+        "width": 320
+      }
+    }
+  ],
+  "connections": {
+    "Campaign Request Form": {
+      "main": [
+        [
+          {
+            "node": "Validate Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Inputs": {
+      "main": [
+        [
+          {
+            "node": "Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid?": {
+      "main": [
+        [
+          {
+            "node": "Create Campaign Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validation Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Campaign Record": {
+      "main": [
+        [
+          {
+            "node": "Fetch Persona",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Persona": {
+      "main": [
+        [
+          {
+            "node": "Fetch Product Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Product Context": {
+      "main": [
+        [
+          {
+            "node": "Fetch Historical Facts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Historical Facts": {
+      "main": [
+        [
+          {
+            "node": "Fetch Live Ad Platform Data (Placeholder)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Live Ad Platform Data (Placeholder)": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Combine Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Combine Data": {
+      "main": [
+        [
+          {
+            "node": "AI: Extract Facts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Extract Facts": {
+      "main": [
+        [
+          {
+            "node": "Parse Facts Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Facts Output": {
+      "main": [
+        [
+          {
+            "node": "AI: Insights & Hypotheses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Insights & Hypotheses": {
+      "main": [
+        [
+          {
+            "node": "Parse Insights Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Insights Output": {
+      "main": [
+        [
+          {
+            "node": "AI: Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Recommendations": {
+      "main": [
+        [
+          {
+            "node": "Parse Recommendations Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Recommendations Output": {
+      "main": [
+        [
+          {
+            "node": "AI: Assemble Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Assemble Brief": {
+      "main": [
+        [
+          {
+            "node": "Parse Brief Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Brief Output": {
+      "main": [
+        [
+          {
+            "node": "Automated QA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Automated QA": {
+      "main": [
+        [
+          {
+            "node": "QA Passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QA Passed?": {
+      "main": [
+        [
+          {
+            "node": "Store Draft Brief",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Flag for Manual Regeneration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Draft Brief": {
+      "main": [
+        [
+          {
+            "node": "Notify Reviewer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag for Manual Regeneration": {
+      "main": [
+        [
+          {
+            "node": "Notify QA Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
