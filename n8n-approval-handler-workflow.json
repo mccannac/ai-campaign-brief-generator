@@ -1,0 +1,371 @@
+{
+  "name": "AI Campaign Brief Generator \u2014 Approval Handler",
+  "nodes": [
+    {
+      "id": "airtable_trigger",
+      "name": "Watch for Status Change",
+      "type": "n8n-nodes-base.airtableTrigger",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        0
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "base": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BASE_ID",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "Campaigns",
+          "mode": "name"
+        },
+        "triggerField": "Status"
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "id": "is_approved",
+      "name": "Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{$json.fields.Status}}",
+              "rightValue": "Approved",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "prep_final",
+      "name": "Prepare Final Brief",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        -160
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const item = $json.fields;\nreturn [{ json: {\n  airtable_record_id: $json.id,\n  campaign_name: item['Campaign Name'],\n  final_brief: item['Draft Brief (JSON)'],\n  reviewer: item['Reviewer'] || 'Unspecified',\n  review_notes: item['Review Notes'] || ''\n} }];"
+      }
+    },
+    {
+      "id": "mark_approved",
+      "name": "Mark Approved + Timestamp",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        380,
+        -160
+      ],
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BASE_ID",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "Campaigns",
+          "mode": "name"
+        },
+        "id": "={{$json.airtable_record_id}}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Final Approved Brief": "={{$json.final_brief}}",
+            "Approved Date": "={{$today}}"
+          }
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "id": "log_learning",
+      "name": "Log Learnings Entry",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        640,
+        -160
+      ],
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BASE_ID",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "Learnings",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Related Campaign": "={{[$json.campaign_name]}}",
+            "Type": "Human Edit",
+            "Description": "={{$json.review_notes || 'Approved without edits'}}",
+            "Date Logged": "={{$today}}"
+          }
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "id": "notify_creative",
+      "name": "Notify Creative Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        900,
+        -160
+      ],
+      "parameters": {
+        "select": "channel",
+        "channel": {
+          "__rl": true,
+          "value": "REPLACE_WITH_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "=Brief approved and ready for creative: *{{$('Prepare Final Brief').first().json.campaign_name}}*\\nApproved by: {{$('Prepare Final Brief').first().json.reviewer}}"
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "id": "capture_notes",
+      "name": "Capture Review Notes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        160
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const item = $json.fields;\nreturn [{ json: {\n  airtable_record_id: $json.id,\n  campaign_name: item['Campaign Name'],\n  status: item['Status'],\n  review_notes: item['Review Notes'] || '',\n  requester_email: item['Requester Email']\n} }];"
+      }
+    },
+    {
+      "id": "log_rejection",
+      "name": "Log Rejection as Learning",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        380,
+        160
+      ],
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BASE_ID",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "Learnings",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Related Campaign": "={{[$json.campaign_name]}}",
+            "Type": "Human Edit",
+            "Description": "={{'Rejected/revision requested: ' + $json.review_notes}}",
+            "Date Logged": "={{$today}}"
+          }
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "id": "notify_requester",
+      "name": "Notify Requester of Revision",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        640,
+        160
+      ],
+      "parameters": {
+        "select": "channel",
+        "channel": {
+          "__rl": true,
+          "value": "REPLACE_WITH_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "=Brief for *{{$('Capture Review Notes').first().json.campaign_name}}* was {{$('Capture Review Notes').first().json.status}}. Notes: {{$('Capture Review Notes').first().json.review_notes}}"
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "id": "note1",
+      "name": "Note-note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -440,
+        -380
+      ],
+      "parameters": {
+        "content": "This is a SEPARATE workflow from the main one.\\nIt polls Airtable for Status changes made by the human reviewer and handles the approve/reject branching that an async human decision requires.\\nSame credentials as the main workflow.",
+        "height": 200,
+        "width": 320
+      }
+    }
+  ],
+  "connections": {
+    "Watch for Status Change": {
+      "main": [
+        [
+          {
+            "node": "Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Final Brief",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Capture Review Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Final Brief": {
+      "main": [
+        [
+          {
+            "node": "Mark Approved + Timestamp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Approved + Timestamp": {
+      "main": [
+        [
+          {
+            "node": "Log Learnings Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Learnings Entry": {
+      "main": [
+        [
+          {
+            "node": "Notify Creative Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Review Notes": {
+      "main": [
+        [
+          {
+            "node": "Log Rejection as Learning",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Rejection as Learning": {
+      "main": [
+        [
+          {
+            "node": "Notify Requester of Revision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
