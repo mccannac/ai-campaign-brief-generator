@@ -1,17 +1,37 @@
-[README.md](https://github.com/user-attachments/files/31713327/README.md)
-# AI Campaign Brief Generator — Build Package
+# AI Campaign Brief Generator
 
-This package translates the architecture blueprint into buildable n8n artifacts. Five files:
+## What it is
+
+An importable n8n build package that turns a marketer's campaign request into a structured, fact-checked creative brief, with human approval before it is used.
+
+## Problem it solves
+
+Campaign briefs take hours to assemble from scattered performance data, persona notes and product details, and AI-written briefs tend to mix facts, guesses and recommendations together. This system keeps them separate and puts a reviewer in the loop.
+
+## How it works
+
+1. A marketer submits a request through an n8n form.
+2. The request is validated and relevant data (personas, products, ad-platform/GA4 performance) is retrieved and normalized.
+3. Four separate Claude calls produce: facts → insights and hypotheses → recommendations → the assembled brief.
+4. An automated QA gate checks the draft against deterministic rules (dates, required fields, schema).
+5. The draft is stored in Airtable and the reviewer is notified in Slack.
+6. A second workflow watches for the reviewer's approve/reject decision and handles each branch.
+
+## Files
 
 | File | What it is |
 |---|---|
 | `n8n-main-workflow.json` | Importable n8n workflow: intake → validation → data retrieval → normalize → 4 Claude calls → automated QA → store draft → notify reviewer |
 | `n8n-approval-handler-workflow.json` | Separate importable workflow: watches Airtable for the reviewer's decision, handles approve/reject branching |
-| `prompt-templates-and-schemas.md` | The four system prompts + JSON schemas used by the AI nodes — **source of truth**, keep in sync with the embedded copies in the workflow JSON |
+| `prompt-templates-and-schemas.md` | The four system prompts + JSON schemas used by the AI nodes (source of truth) |
 | `data-schema-and-intake-form.md` | Airtable base schema (5 tables), intake form field spec, and the deterministic QA rule set |
-| `README.md` | This file |
+| `LICENSE` | MIT license |
 
-**Put all five in a GitHub repo now**, before you touch the n8n UI. That closes gap #5 from the blueprint (no version control on prompts/schemas) from day one — every future prompt tweak becomes a diffable, revertible commit instead of an untracked change buried in n8n's UI.
+## Status
+
+**Build package.** Importable n8n workflows with placeholder credentials and a placeholder live-data node; not yet deployed with real data.
+
+*Designed by me; drafted with Claude/ChatGPT.*
 
 ---
 
